@@ -6,6 +6,7 @@ import yaml
 import time
 import requests
 import json
+import pymsteams
 
 
 # certstream websocket URL 
@@ -18,23 +19,28 @@ domains_yaml = os.path.dirname(os.path.realpath(__file__))+'/domains.yaml'
 found_domains_path = os.path.dirname(os.path.realpath(__file__))+'/output/found-domains.log'
 
 # function to send slack notifications
-def slack_notifier(unique_subdomains):
-    webhook_url = webhook['SLACK_WEBHOOK']
+def teams_notifier(unique_subdomains):
+    webhook_url = webhook['TEAMS_WEBHOOK']
+
+    myTeamsMessage = pymsteams.connectorcard(webhook_url)
+    myTeamsMessage.title("CertEagle Alert")
+    myTeamsMessage.text("🔴 CertEagle Alert : \n\n" + "✔️ Domain matched : " + str(len(unique_subdomains)) + "\n\n" +'\n'.join(unique_subdomains))
+    myTeamsMessage.send()
 
     # data to send in slack notifications
-    slack_data = {
-        'username' : 'certeagle-bot' , 
-        'channel': '#subdomain-monitor' , 
-        'text': 
-            "🔴 CertEagle Alert : \n\n" + "✔️ Domain matched : " + str(len(unique_subdomains)) + "\n\n" +'\n'.join(unique_subdomains) 
-        }
+    # slack_data = {
+    #     'username' : 'certeagle-bot' , 
+    #     'channel': '#subdomain-monitor' , 
+    #     'text': 
+    #         "🔴 CertEagle Alert : \n\n" + "✔️ Domain matched : " + str(len(unique_subdomains)) + "\n\n" +'\n'.join(unique_subdomains) 
+    #     }
     
     #print(slack_data)
     
-    response = requests.post(
-	    webhook_url, data=json.dumps(slack_data),
-	    headers={'Content-Type': 'application/json'}
-	)
+    # response = requests.post(
+	#     webhook_url, data=json.dumps(slack_data),
+	#     headers={'Content-Type': 'application/json'}
+	# )
 
     return 
 
@@ -58,9 +64,7 @@ def parse_results(all_domains_found):
     if len(seen_domains) > 1:
         unique_subdomains = list(set(seen_domains))
 
-         # checking if domain already exists in already seen file
-        
-       
+        # checking if domain already exists in already seen file
         for t in unique_subdomains:
             print("\u001b[32m[MATCH]\u001b[0m : " + t )
             with open(found_domains_path, 'a') as f:
@@ -68,25 +72,33 @@ def parse_results(all_domains_found):
 
 
         # checking if a hook url is supplied , if yes then sending notifications
-        if webhook['SLACK_WEBHOOK'].startswith("https://hooks.slack.com/"):
-            for t in unique_subdomains:
-                try:
-                    #open and match 
-                    with open('already-seen.log' , 'r') as f:
-                        already_seen = f.read().splitlines()
-                        if any(word in t for word in already_seen):
-                            pass
-                        else:
-                            #send notifications
-                            slack_notifier(unique_subdomains)
-                            with open('already-seen.log' , 'a') as writer:
-                                writer.write('\n'.join(unique_subdomains))
-                                writer.write('\n')
+        # if webhook['SLACK_WEBHOOK'].startswith("https://hooks.slack.com/"):
+        for t in unique_subdomains:
+            try:
+                #open and match 
+                with open('already-seen.log' , 'r') as f:
+                    already_seen = f.read().splitlines()
+                    if any(word in t for word in already_seen):
+                        pass
+                    else:
+                        #send notifications
+                        teams_notifier(unique_subdomains)
+                        with open('already-seen.log' , 'a') as writer:
+                            writer.write('\n'.join(unique_subdomains))
+                            writer.write('\n')
 
-                except Exception as e:
-                    pass    
+            except Exception as e:
+                pass    
 
     return 
+
+
+def on_open():
+    print("Connection successfully established!")
+
+def on_error(instance, exception):
+    # Instance is the CertStreamClient instance that barfed
+    print("Exception in CertStreamClient! -> {}".format(exception)) 
 
     
 # callback function
@@ -136,11 +148,11 @@ if __name__ == "__main__":
 
     # displaying basic information
     print("\u001b[32m[INFO]\u001b[0m No of domains/Keywords to monitor  " + str(len(domain_list['domains'])))
-    if webhook['SLACK_WEBHOOK'].startswith("https://"):
-        print("\u001b[32m[INFO]\u001b[0m Slack Notifications Status - \u001b[32;1mON\u001b[0m")
-    else:
-        print("\u001b[32m[INFO]\u001b[0m Slack Notifications Status - \u001b[31;1mOFF\u001b[0m")
+    # if webhook['SLACK_WEBHOOK'].startswith("https://"):
+    #     print("\u001b[32m[INFO]\u001b[0m Slack Notifications Status - \u001b[32;1mON\u001b[0m")
+    # else:
+    #     print("\u001b[32m[INFO]\u001b[0m Slack Notifications Status - \u001b[31;1mOFF\u001b[0m")
 
 
 
-    certstream.listen_for_events(print_callback, url=url)
+    certstream.listen_for_events(print_callback, on_open=on_open,on_error=on_error,  url=url)
